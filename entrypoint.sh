@@ -10,7 +10,7 @@ airflow db migrate
 
 if [ -n "${AIRFLOW_ADMIN_USERNAME}" ] && [ -n "${AIRFLOW_ADMIN_PASSWORD}" ]; then
     echo "Creating admin user from environment variables..."
-    airflow users create \
+    airflow db-manager create-user \
         --username "${AIRFLOW_ADMIN_USERNAME}" \
         --firstname "${AIRFLOW_ADMIN_FIRSTNAME:-Admin}" \
         --lastname "${AIRFLOW_ADMIN_LASTNAME:-User}" \
