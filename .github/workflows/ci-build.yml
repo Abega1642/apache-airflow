@@ -6,7 +6,7 @@ on:
      - '**'
   pull_request:
     branches:
-    - '** '
+    - '**'
 
 jobs:
   build:
@@ -55,16 +55,20 @@ jobs:
           -e AIRFLOW_ADMIN_USERNAME="$TEST_USER" \
           -e AIRFLOW_ADMIN_PASSWORD="$TEST_PASS" \
           -e AIRFLOW_ADMIN_EMAIL="$TEST_EMAIL" \
+          -e PROJECT_GIT_REPO="https://github.com/Abega1642/toetrandro-etl.git" \
           -e AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@host.docker.internal:5432/airflow" \
           --add-host=host.docker.internal:host-gateway \
           airflow-app:latest
         
         echo "Waiting for container to initialize..."
-        sleep 30
+        sleep 45
         
         if docker ps | grep -q test-airflow; then
           echo "Container is running successfully"
-          docker logs test-airflow --tail 15
+          echo "=== Container Logs ==="
+          docker logs test-airflow --tail 20
+          echo "=== Checking if DAGs were cloned ==="
+          docker exec test-airflow ls -la /opt/airflow/dags/ || echo "No DAGs folder yet"
         else
           echo "Container failed to start"
           docker logs test-airflow
