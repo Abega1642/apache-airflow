@@ -5,17 +5,20 @@ if [ -z "${FERNET_KEY}" ]; then
 fi
 
 if [ -n "${PROJECT_GIT_REPO}" ]; then
-    echo "Cloning entire project repository..."
-    git clone ${PROJECT_GIT_REPO} /opt/airflow/project
+    echo "Cloning project repository: ${PROJECT_GIT_REPO}"
+    git clone ${PROJECT_GIT_REPO} /opt/airflow/project || echo "Clone failed or already exists"
     
     export PYTHONPATH="/opt/airflow/project:$PYTHONPATH"
     
-    ln -sf /opt/airflow/project/workflows/dags /opt/airflow/dags
-    
-    echo "Project cloned successfully!"
-    echo "Python path includes: /opt/airflow/project"
-    echo "DAGs linked from: /opt/airflow/project/workflows/dags"
-    echo "All imports available: src/, config/, data/, workflows/, resources/"
+    if [ -d "/opt/airflow/project/workflows/dags" ]; then
+        ln -sf /opt/airflow/project/workflows/dags /opt/airflow/dags
+        echo "DAGs linked successfully"
+    else
+        echo "No workflows/dags folder found in repo"
+    fi
+else
+    echo "No PROJECT_GIT_REPO set, using default DAGs"
 fi
 
+echo "Starting Airflow standalone..."
 exec airflow standalone
