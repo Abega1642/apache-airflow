@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ -z "${FERNET_KEY}" ]; then
+    echo "Warning: FERNET_KEY not set. Generating a temporary one..."
+    export FERNET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+fi
+
 echo "Initializing Airflow database..."
 airflow db migrate
 

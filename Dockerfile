@@ -10,6 +10,8 @@ RUN apt-get update && \
         curl \
         libffi-dev \
         libssl-dev \
+        libpq-dev \
+        postgresql-client \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 
@@ -19,7 +21,6 @@ ENV AIRFLOW_HOME=/opt/airflow
 ENV AIRFLOW__CORE__EXECUTOR=LocalExecutor
 ENV AIRFLOW__CORE__LOAD_EXAMPLES=false
 ENV AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
-ENV AIRFLOW__CORE__FERNET_KEY=${FERNET_KEY}
 ENV AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
 ENV AIRFLOW__WEBSERVER__RBAC=true
 

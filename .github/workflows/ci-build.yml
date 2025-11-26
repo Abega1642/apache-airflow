@@ -15,20 +15,27 @@ jobs:
     permissions:
       contents: read
 
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: airflow
+          POSTGRES_PASSWORD: airflow
+          POSTGRES_DB: airflow
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-
-    - name: Create test environment file from .env.example
-      run: |
-        cp .env.template .env.test
-        echo "FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=" >> .env.test
-        echo "AIRFLOW_ADMIN_USERNAME=testuser_$(date +%s)" >> .env.test
-        echo "AIRFLOW_ADMIN_PASSWORD=testpass_$(date +%s)" >> .env.test
-        echo "AIRFLOW_ADMIN_EMAIL=test_$(date +%s)@example.com" >> .env.test
 
     - name: Build Docker image
       run: |
@@ -37,7 +44,7 @@ jobs:
           --file Dockerfile \
           .
 
-    - name: Test Docker image with generated test values
+    - name: Test Docker image
       run: |
         TEST_USER="testuser_$(date +%s)"
         TEST_PASS="testpass_$(date +%s)"
@@ -48,16 +55,16 @@ jobs:
           -e AIRFLOW_ADMIN_USERNAME="$TEST_USER" \
           -e AIRFLOW_ADMIN_PASSWORD="$TEST_PASS" \
           -e AIRFLOW_ADMIN_EMAIL="$TEST_EMAIL" \
-          -e FERNET_KEY="46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=" \
+          -e AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@host.docker.internal:5432/airflow" \
+          --add-host=host.docker.internal:host-gateway \
           airflow-app:latest
         
         echo "Waiting for container to initialize..."
-        sleep 20
+        sleep 30
         
         if docker ps | grep -q test-airflow; then
           echo "Container is running successfully"
-          echo "Checking startup logs:"
-          docker logs test-airflow --tail 10
+          docker logs test-airflow --tail 15
         else
           echo "Container failed to start"
           docker logs test-airflow
