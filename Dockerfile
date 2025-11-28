@@ -8,6 +8,7 @@ RUN apt-get update && \
         libpq-dev \
         postgresql-client \
         git \
+        curl \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 

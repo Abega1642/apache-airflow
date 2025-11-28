@@ -2,6 +2,8 @@
 set -e
 
 echo "=== Airflow 3.x Initialization ==="
+echo "Current user: $(whoami)"
+echo "Working directory: $(pwd)"
 
 
 if [ -z "${FERNET_KEY}" ]; then
@@ -41,16 +43,18 @@ if [ -n "${PROJECT_GIT_REPO}" ]; then
             ls -lah $AIRFLOW__CORE__DAGS_FOLDER/ || echo "Cannot list DAGs"
         fi
     else
-        echo "✗ Failed to clone repository"
+        echo "Failed to clone repository"
         echo "Using default DAGs folder: /opt/airflow/dags"
     fi
 else
     echo "No PROJECT_GIT_REPO provided, using default DAGs folder"
 fi
 
-
 echo "=== Initializing Airflow database ==="
-airflow db migrate
+airflow db migrate || {
+    echo "Database migration failed!"
+    exit 1
+}
 
 
 if [ -n "${AIRFLOW_ADMIN_USERNAME}" ] && [ -n "${AIRFLOW_ADMIN_PASSWORD}" ]; then
@@ -61,12 +65,11 @@ if [ -n "${AIRFLOW_ADMIN_USERNAME}" ] && [ -n "${AIRFLOW_ADMIN_PASSWORD}" ]; the
         --lastname "${AIRFLOW_ADMIN_LASTNAME:-User}" \
         --role Admin \
         --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" \
-        --password "${AIRFLOW_ADMIN_PASSWORD}" 2>/dev/null || echo "Admin user already exists"
+        --password "${AIRFLOW_ADMIN_PASSWORD}" 2>&1 | grep -v "already exists" || echo "✓ Admin user ready"
 else
-    echo "⚠ WARNING: AIRFLOW_ADMIN_USERNAME and AIRFLOW_ADMIN_PASSWORD not set!"
-    echo "Please set these environment variables to create an admin user."
+    echo "WARNING: AIRFLOW_ADMIN_USERNAME and AIRFLOW_ADMIN_PASSWORD not set!"
+    echo "Skipping user creation - you'll need to create a user manually"
 fi
-
 
 echo "=== Starting Airflow API Server (UI + REST API) ==="
 airflow api-server --port 8080 &
@@ -96,7 +99,6 @@ wait_for_processes() {
     done
 }
 
-# Handle shutdown
 trap "kill $API_SERVER_PID $SCHEDULER_PID 2>/dev/null; exit 0" SIGTERM SIGINT
 
 echo "=== Airflow 3.x is running ==="

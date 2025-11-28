@@ -46,13 +46,14 @@ jobs:
     
     - name: Test Docker image
       run: |
+
         TEST_USER="testuser_$(date +%s)"
         TEST_PASS="testpass_$(openssl rand -base64 12)"
         TEST_EMAIL="test_$(date +%s)@example.com"
         TEST_FERNET="$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
         
         echo "Starting Airflow container..."
-        docker run --rm -d \
+        docker run -d \
           --name test-airflow \
           -e AIRFLOW_ADMIN_USERNAME="$TEST_USER" \
           -e AIRFLOW_ADMIN_PASSWORD="$TEST_PASS" \
@@ -64,10 +65,23 @@ jobs:
           -p 8080:8080 \
           airflow-app:latest
         
-        echo "Waiting for Airflow to initialize (60 seconds)..."
-        sleep 60
+        echo "Waiting for Airflow to initialize..."
         
-        # Check if container is still running
+
+        for i in {1..60}; do
+          if ! docker ps -q -f name=test-airflow | grep -q .; then
+            echo "✗ Container stopped at ${i} seconds"
+            echo ""
+            echo "=== Container Logs ==="
+            docker logs test-airflow 2>&1 || echo "Could not retrieve logs"
+            exit 1
+          fi
+          echo -n "."
+          sleep 1
+        done
+        echo ""
+        
+
         if docker ps | grep -q test-airflow; then
           echo "Container is running successfully"
           
@@ -115,10 +129,11 @@ jobs:
           exit 1
         fi
         
-        # Cleanup
+
         echo ""
         echo "Stopping test container..."
-        docker stop test-airflow
+        docker stop test-airflow 2>/dev/null || true
+        docker rm test-airflow 2>/dev/null || true
     
     - name: Run security scan with Trivy
       uses: aquasecurity/trivy-action@master
