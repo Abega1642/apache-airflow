@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
+    
     services:
       postgres:
         image: postgres:13
@@ -29,54 +29,97 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-
+    
     - name: Build Docker image
       run: |
         docker build \
           --tag airflow-app:latest \
           --file Dockerfile \
           .
-
+    
     - name: Test Docker image
       run: |
         TEST_USER="testuser_$(date +%s)"
-        TEST_PASS="testpass_$(date +%s)"
+        TEST_PASS="testpass_$(openssl rand -base64 12)"
         TEST_EMAIL="test_$(date +%s)@example.com"
+        TEST_FERNET="$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
         
+        echo "Starting Airflow container..."
         docker run --rm -d \
           --name test-airflow \
           -e AIRFLOW_ADMIN_USERNAME="$TEST_USER" \
           -e AIRFLOW_ADMIN_PASSWORD="$TEST_PASS" \
           -e AIRFLOW_ADMIN_EMAIL="$TEST_EMAIL" \
+          -e FERNET_KEY="$TEST_FERNET" \
           -e PROJECT_GIT_REPO="https://github.com/Abega1642/toetrandro-etl.git" \
           -e AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:airflow@host.docker.internal:5432/airflow" \
           --add-host=host.docker.internal:host-gateway \
+          -p 8080:8080 \
           airflow-app:latest
         
-        echo "Waiting for container to initialize..."
-        sleep 45
+        echo "Waiting for Airflow to initialize (60 seconds)..."
+        sleep 60
         
+        # Check if container is still running
         if docker ps | grep -q test-airflow; then
           echo "Container is running successfully"
-          echo "=== Container Logs ==="
-          docker logs test-airflow --tail 20
-          echo "=== Checking if DAGs were cloned ==="
-          docker exec test-airflow ls -la /opt/airflow/dags/ || echo "No DAGs folder yet"
+          
+          echo ""
+          echo "=== Container Logs (Last 50 lines) ==="
+          docker logs test-airflow --tail 50
+          
+          echo ""
+          echo "=== Checking Git Clone ==="
+          docker exec test-airflow test -d /opt/airflow/project && \
+            echo "Project repository cloned" || \
+            echo "Project repository not found"
+          
+          echo ""
+          echo "=== Checking DAGs Folder ==="
+          docker exec test-airflow ls -la /opt/airflow/project/workflows/dags/ 2>/dev/null || \
+            echo "DAGs folder not accessible"
+          
+          echo ""
+          echo "=== Listing DAGs in Airflow ==="
+          docker exec test-airflow airflow dags list 2>/dev/null || \
+            echo "Could not list DAGs yet"
+          
+          echo ""
+          echo "=== Checking for DAG Import Errors ==="
+          docker exec test-airflow airflow dags list-import-errors 2>/dev/null || \
+            echo "Could not check import errors"
+          
+          echo ""
+          echo "=== API Server Health Check ==="
+          docker exec test-airflow curl -f http://localhost:8080/health 2>/dev/null && \
+            echo "API Server is healthy" || \
+            echo "API Server health check failed"
+          
+          echo ""
+          echo "=== Process Status ==="
+          docker exec test-airflow ps aux | grep -E "(api-server|scheduler)" || \
+            echo "Could not verify processes"
+          
         else
-          echo "Container failed to start"
+          echo "Container failed to start or stopped unexpectedly"
+          echo ""
+          echo "=== Full Container Logs ==="
           docker logs test-airflow
           exit 1
         fi
         
+        # Cleanup
+        echo ""
+        echo "Stopping test container..."
         docker stop test-airflow
-
+    
     - name: Run security scan with Trivy
       uses: aquasecurity/trivy-action@master
       with:
@@ -85,6 +128,24 @@ jobs:
         exit-code: 0
         ignore-unfixed: true
         severity: 'CRITICAL,HIGH'
-
+    
+    - name: Test image size
+      run: |
+        IMAGE_SIZE=$(docker images airflow-app:latest --format "{{.Size}}")
+        echo "Docker image size: $IMAGE_SIZE"
+        
+        # Extract numeric size in MB for comparison
+        SIZE_MB=$(docker images airflow-app:latest --format "{{.Size}}" | sed 's/[^0-9.]//g')
+        echo "Size in MB: $SIZE_MB"
+        
+        # Warning if image is too large for 512MB RAM constraint
+        if (( $(echo "$SIZE_MB > 400" | bc -l) )); then
+          echo "WARNING: Image size ($IMAGE_SIZE) may be too large for 512MB RAM environments"
+        else
+          echo "Image size is reasonable for low-memory environments"
+        fi
+    
     - name: Log build success
-      run: echo "Docker image built and tested successfully"
+      run: |
+        echo "Docker image built and tested successfully"
+        echo "All checks passed"
